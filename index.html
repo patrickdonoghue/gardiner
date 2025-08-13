@@ -19,6 +19,8 @@
     .item{display:flex;flex-direction:column;padding:12px;border:1px dashed #2a2c40;border-radius:12px;min-height:70px}
     .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
     .value{margin-top:6px;font-size:15px;word-break:break-word}
+    .value.readonly{display:inline-block;background:#0f1117;border:1px solid #2a2c40;border-radius:999px;padding:6px 10px;user-select:text}
+    .hint{margin-top:6px;color:var(--muted);font-size:12px}
     .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
     button{appearance:none;border:1px solid #2b2d42;background:#1a1b26;color:var(--ink);padding:10px 14px;border-radius:12px;font-weight:600;cursor:pointer}
     button.primary{background:var(--accent);border-color:transparent;color:white}
@@ -36,9 +38,23 @@
 
     <main class="card" role="main">
       <div class="row" id="dataGrid" aria-live="polite">
-        <div class="item"><span class="label">Device Type</span><span class="value" id="deviceType">Detecting…</span></div>
-        <div class="item"><span class="label">Manufacturer / Model (Auto)</span><span class="value" id="oemModel">Detecting…</span></div>
-        <div class="item"><span class="label">Manufacturer / Model (Manual)</span><input type="text" id="manualModel" value="enter your phone brand and model"></div>
+        <div class="item">
+          <span class="label">Device Type</span>
+          <span class="value" id="deviceType">Detecting…</span>
+        </div>
+
+        <div class="item">
+          <span class="label">Manufacturer / Model (Auto)</span>
+          <span class="value readonly" id="oemModel" title="Automatically detected; cannot edit">Detecting…</span>
+          <span class="hint" id="autoHint" aria-live="polite"></span>
+        </div>
+
+        <div class="item">
+          <span class="label">Manufacturer / Model (Manual)</span>
+          <input type="text" id="manualModel" value="enter your phone brand and model" aria-label="Enter your phone brand and model">
+          <span class="hint">If auto-detection is unavailable, what you type here will be used for display and included in the download.</span>
+        </div>
+
         <div class="item"><span class="label">Operating System</span><span class="value" id="os">Detecting…</span></div>
         <div class="item"><span class="label">Internet Available</span><span class="value" id="internet">Checking…</span></div>
         <div class="item"><span class="label">LAN Active</span><span class="value" id="lan">Unknown</span></div>
@@ -72,6 +88,7 @@
       dateTime: document.getElementById('dateTime'),
       oemModel: document.getElementById('oemModel'),
       manualModel: document.getElementById('manualModel'),
+      autoHint: document.getElementById('autoHint'),
       year: document.getElementById('year'),
       refreshBtn: document.getElementById('refreshBtn'),
       locBtn: document.getElementById('locBtn'),
@@ -197,11 +214,13 @@ Date and Time: ${els.dateTime.textContent}`;
 
     async function updateModel(){
       els.oemModel.textContent = 'Detecting…';
+      els.autoHint.textContent = '';
       try {
         const ua = navigator.userAgent || '';
         const uaData = navigator.userAgentData;
         let model = '';
 
+        // UA-Client Hints (Chrome/Android typically)
         if (uaData?.getHighEntropyValues) {
           try {
             const res = await uaData.getHighEntropyValues(['model']);
@@ -209,11 +228,13 @@ Date and Time: ${els.dateTime.textContent}`;
           } catch {}
         }
 
+        // Fallback parse from legacy UA
         if (!model) {
           const m = ua.match(/(SM-[A-Z0-9]+|Pixel [A-Za-z0-9 ]+|ONEPLUS [A-Z0-9]+|CPH[0-9]+|MI [A-Z0-9 ]+|Redmi [A-Za-z0-9 ]+|Moto [A-Za-z0-9]+|XT[0-9]+|HUAWEI [A-Za-z0-9-]+)/);
           if (m) model = m[1];
         }
 
+        // Infer brand
         let brand = '';
         if (/iPhone|iPad|iPod/.test(ua)) { brand = 'Apple'; model = model || (ua.match(/(iPhone|iPad|iPod)/)||[])[1]; }
         else if (/Samsung|SM-/.test(ua) || /^SM-/.test(model)) brand = 'Samsung';
@@ -227,12 +248,14 @@ Date and Time: ${els.dateTime.textContent}`;
           els.oemModel.textContent = brand ? `${brand} ${model}` : model;
         } else {
           els.oemModel.textContent = 'Not available (browser privacy limits)';
+          els.autoHint.textContent = 'Tip: Use Chrome on Android for best chance of automatic model detection, or enter it manually below.';
         }
       } catch {
         els.oemModel.textContent = 'Not available';
       }
     }
 
+    // If auto is empty/unavailable, reflect the manual entry in the display
     function syncManualToAuto(){
       const manual = els.manualModel?.value?.trim();
       const current = (els.oemModel.textContent || '').trim();

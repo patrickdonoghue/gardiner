@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RDLG Data Collection</title>
   <style>
-    :root { --bg:#0b0c10; --card:#121318; --ink:#e6e6e6; --muted:#a6a6a6; --accent:#4895ef; }
+    :root { --bg:#013220; --card:#121318; --ink:#e6e6e6; --muted:#a6a6a6; --accent:#4895ef; }
     *{box-sizing:border-box}
     html,body{height:100%}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji"; background:var(--bg); color:var(--ink);}
@@ -24,8 +24,7 @@
     button.primary{background:var(--accent);border-color:transparent;color:white}
     button:disabled{opacity:.6;cursor:not-allowed}
     .note{color:var(--muted);font-size:12px;margin-top:8px}
-    a.link{color:var(--accent);text-decoration:none}
-    a.link:hover{text-decoration:underline}
+    input[type="text"]{padding:10px;border-radius:8px;border:1px solid #2a2c40;background:#0f1117;color:var(--ink);width:100%;}
   </style>
 </head>
 <body>
@@ -38,7 +37,8 @@
     <main class="card" role="main">
       <div class="row" id="dataGrid" aria-live="polite">
         <div class="item"><span class="label">Device Type</span><span class="value" id="deviceType">Detecting…</span></div>
-        <div class="item"><span class="label">Manufacturer / Model</span><span class="value" id="oemModel">Detecting…</span></div>
+        <div class="item"><span class="label">Manufacturer / Model (Auto)</span><span class="value" id="oemModel">Detecting…</span></div>
+        <div class="item"><span class="label">Manufacturer / Model (Manual)</span><input type="text" id="manualModel" value="enter your phone brand and model"></div>
         <div class="item"><span class="label">Operating System</span><span class="value" id="os">Detecting…</span></div>
         <div class="item"><span class="label">Internet Available</span><span class="value" id="internet">Checking…</span></div>
         <div class="item"><span class="label">LAN Active</span><span class="value" id="lan">Unknown</span></div>
@@ -50,11 +50,10 @@
       <div class="actions">
         <button id="refreshBtn" title="Re-run detections">Refresh</button>
         <button id="locBtn" title="Request GPS location">Get Location</button>
-        <button id="permBtn" title="Request any needed permissions (e.g., location)">Enable Data Collection</button>
         <button id="modelBtn" title="Try to read phone model (no prompt shown)">Try Model Detection</button>
         <button id="downloadBtn" class="primary" title="Download all fields as a .txt file">Download as .txt</button>
       </div>
-      <div class="note">Note: Some fields depend on browser support and user permission (e.g., GPS). LAN/WAN are inferred from the Network Information API when available.</div>
+      <div class="note">Note: Some fields depend on browser support and user permission (e.g., GPS). LAN/WAN are inferred from the Network Information API when available. Model detection only works in some browsers.</div>
     </main>
 
     <footer style="padding:14px 8px 0;">
@@ -72,10 +71,10 @@
       location: document.getElementById('location'),
       dateTime: document.getElementById('dateTime'),
       oemModel: document.getElementById('oemModel'),
+      manualModel: document.getElementById('manualModel'),
       year: document.getElementById('year'),
       refreshBtn: document.getElementById('refreshBtn'),
       locBtn: document.getElementById('locBtn'),
-      permBtn: document.getElementById('permBtn'),
       modelBtn: document.getElementById('modelBtn'),
       downloadBtn: document.getElementById('downloadBtn')
     };
@@ -101,16 +100,15 @@
         const ver = (ua.match(/Windows NT ([0-9_.]+)/) || [])[1];
         os = `Windows ${ver ? 'NT ' + ver : ''}`.trim();
       } else if (/Android/i.test(ua)) {
-        const ver = (ua.match(/Android\s([0-9._]+)/i) || [])[1];
+        const ver = (ua.match(/Android\\s([0-9._]+)/i) || [])[1];
         os = `Android ${ver || ''}`.trim();
       } else if (/iPhone|iPad|iPod/.test(ua)) {
-        const ver = (ua.match(/OS\s([0-9_]+)/) || [])[1];
+        const ver = (ua.match(/OS\\s([0-9_]+)/) || [])[1];
         os = `iOS ${ver ? ver.replaceAll('_','.') : ''}`.trim();
       } else if (/Mac OS X/.test(ua)) {
-        const ver = (ua.match(/Mac OS X\s([0-9_]+)/) || [])[1];
+        const ver = (ua.match(/Mac OS X\\s([0-9_]+)/) || [])[1];
         os = `macOS ${ver ? ver.replaceAll('_','.') : ''}`.trim();
       } else if (/Linux/.test(ua)) { os = 'Linux'; }
-      // Try UA-CH platform (e.g., "Android", "Windows")
       if (uaData?.platform){ os = `${uaData.platform}${os && !ua.includes(uaData.platform) ? ' ('+os+')' : ''}`; }
       return os + (plt ? ` [${plt}]` : '');
     }
@@ -138,16 +136,14 @@
       els.internet.textContent = online ? 'Yes' : 'No';
 
       const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-      // Reset
       els.lan.textContent = 'Unknown';
       els.wan.textContent = 'Unknown';
       if (c && 'type' in c) {
-        const t = c.type; // wifi, cellular, ethernet, none, etc.
+        const t = c.type;
         if (t === 'wifi' || t === 'ethernet') els.lan.textContent = 'Yes';
         if (t === 'cellular') els.wan.textContent = 'Yes';
         if (t === 'none') { els.lan.textContent = 'No'; els.wan.textContent = 'No'; }
       } else if (c && 'effectiveType' in c) {
-        // Infer: 4g/3g usually WAN; keep Unknown if we can't be sure
         if (['slow-2g','2g','3g','4g'].includes(c.effectiveType)) {
           els.wan.textContent = 'Possibly';
         }
@@ -165,9 +161,7 @@
           const { latitude, longitude, accuracy } = pos.coords;
           els.location.textContent = `${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${Math.round(accuracy)}m)`;
         },
-        (err)=>{
-          els.location.textContent = `Unavailable (${err.message})`;
-        },
+        (err)=>{ els.location.textContent = `Unavailable (${err.message})`; },
         { enableHighAccuracy:true, timeout:12000, maximumAge:0 }
       );
     }
@@ -178,7 +172,8 @@
       return `RDLG Data Collection
 Page Name: Device Data
 Device Type: ${els.deviceType.textContent}
-Manufacturer/Model: ${els.oemModel.textContent}
+Manufacturer/Model (Auto): ${els.oemModel.textContent}
+Manufacturer/Model (Manual): ${els.manualModel.value}
 Operating System: ${els.os.textContent}
 Internet Available: ${els.internet.textContent}
 LAN Active: ${els.lan.textContent}
@@ -206,7 +201,7 @@ Date and Time: ${els.dateTime.textContent}`;
         let model = '';
 
         // UA-Client Hints (Chrome/Android typically)
-        if (uaData && uaData.getHighEntropyValues) {
+        if (uaData?.getHighEntropyValues) {
           try {
             const res = await uaData.getHighEntropyValues(['model']);
             model = res?.model || '';
@@ -239,12 +234,33 @@ Date and Time: ${els.dateTime.textContent}`;
       }
     }
 
-    function init(){
+    // Manual override: if auto is empty/unavailable, use manual entry for display
+    function syncManualToAuto(){
+      const manual = els.manualModel?.value?.trim();
+      const current = (els.oemModel.textContent || '').trim();
+      if (!manual) return;
+      if (!current || current === 'Not available' || current === 'Detecting…' || current === 'Not available (browser privacy limits)') {
+        els.oemModel.textContent = manual;
+      }
+    }
+
+    async function requestModelAccess(){
+      await updateModel();
+      const uaData = navigator.userAgentData;
+      const supportsModel = !!(uaData && uaData.getHighEntropyValues);
+      els.oemModel.title = supportsModel
+        ? 'Browser supports UA-Client Hints model detection. If still empty, this device/browser does not expose a model string.'
+        : 'This browser does not support UA-Client Hints model detection.';
+      syncManualToAuto();
+    }
+
+    async function init(){
       els.deviceType.textContent = getDeviceType();
       els.os.textContent = getOSInfo();
       updateConnectivity();
       updateDate();
-      updateModel();
+      await updateModel();
+      syncManualToAuto();
       els.year.textContent = new Date().getFullYear();
     }
 
@@ -256,38 +272,12 @@ Date and Time: ${els.dateTime.textContent}`;
     }
     els.refreshBtn.addEventListener('click', init);
     els.locBtn.addEventListener('click', getLocation);
-    els.permBtn.addEventListener('click', async () => {
-      await getLocation();
-      try {
-        if ('permissions' in navigator) {
-          const geo = await navigator.permissions.query({ name: 'geolocation' });
-          els.location.title = `Geolocation permission: ${geo.state}`;
-        }
-      } catch {}
-      await updateModel();
-      updateConnectivity();
-      updateDate();
-    });
-    els.modelBtn.addEventListener('click', async () => {
-      await updateModel();
-      try {
-        const uaData = navigator.userAgentData;
-        const supportsModel = !!(uaData && uaData.getHighEntropyValues);
-        const msg = supportsModel
-          ? 'Browser supports UA-Client Hints model detection. If still empty, this device/browser does not expose a model string.'
-          : 'This browser does not support UA-Client Hints model detection.';
-        els.oemModel.title = msg;
-      } catch {}
-    });
+    els.modelBtn.addEventListener('click', requestModelAccess);
+    els.manualModel.addEventListener('input', syncManualToAuto);
     els.downloadBtn.addEventListener('click', downloadTxt);
 
     // Kickoff
     init();
   </script>
-
-
-
-
-
 </body>
 </html>
